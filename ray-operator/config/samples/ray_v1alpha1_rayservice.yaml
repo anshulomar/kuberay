@@ -5,7 +5,8 @@
 apiVersion: ray.io/v1alpha1
 kind: RayService
 metadata:
-  name: rayservice-sample
+  name: rayservice
+  namespace: ray-system
 spec:
   serviceUnhealthySecondThreshold: 300 # Config for the health check threshold for service. Default value is 60.
   deploymentUnhealthySecondThreshold: 300 # Config for the health check threshold for deployments. Default value is 60.
@@ -43,6 +44,40 @@ spec:
           numCpus: 0.1
   rayClusterConfig:
     rayVersion: '2.3.0' # should match the Ray version in the image of the containers
+    # If enableInTreeAutoscaling is true, the autoscaler sidecar will be added to the Ray head pod.
+    # Ray autoscaler integration is supported only for Ray versions >= 1.11.0
+    # Ray autoscaler integration is Beta with KubeRay >= 0.3.0 and Ray >= 2.0.0.
+    enableInTreeAutoscaling: true
+    # autoscalerOptions is an OPTIONAL field specifying configuration overrides for the Ray autoscaler.
+    # The example configuration shown below below represents the DEFAULT values.
+    # (You may delete autoscalerOptions if the defaults are suitable.)
+    autoscalerOptions:
+      # upscalingMode is "Default" or "Aggressive."
+      # Conservative: Upscaling is rate-limited; the number of pending worker pods is at most the size of the Ray cluster.
+      # Default: Upscaling is not rate-limited.
+      # Aggressive: An alias for Default; upscaling is not rate-limited.
+      upscalingMode: Default
+      # idleTimeoutSeconds is the number of seconds to wait before scaling down a worker pod which is not using Ray resources.
+      idleTimeoutSeconds: 60
+      # image optionally overrides the autoscaler's container image.
+      # If instance.spec.rayVersion is at least "2.0.0", the autoscaler will default to the same image as
+      # the ray container by. For older Ray versions, the autoscaler will default to using the Ray 2.0.0 image.
+      ## image: "my-repo/my-custom-autoscaler-image:tag"
+      # imagePullPolicy optionally overrides the autoscaler container's default image pull policy (IfNotPresent).
+      imagePullPolicy: IfNotPresent
+      # Optionally specify the autoscaler container's securityContext.
+      securityContext: {}
+      env: []
+      envFrom: []
+      # resources specifies optional resource request and limit overrides for the autoscaler container.
+      # For large Ray clusters, we recommend monitoring container resource usage to determine if overriding the defaults is required.
+      resources:
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
     ######################headGroupSpecs#################################
     # Ray head pod template.
     headGroupSpec:
@@ -61,11 +96,11 @@ spec:
               image: rayproject/ray:2.3.0
               resources:
                 limits:
-                  cpu: 2
-                  memory: 2Gi
+                  cpu: 14
+                  memory: 54Gi
                 requests:
-                  cpu: 2
-                  memory: 2Gi
+                  cpu: 14
+                  memory: 54Gi
               ports:
                 - containerPort: 6379
                   name: gcs-server
@@ -101,11 +136,21 @@ spec:
                       command: ["/bin/sh","-c","ray stop"]
                 resources:
                   limits:
-                    cpu: "1"
-                    memory: "2Gi"
+                    cpu: "14"
+                    memory: "54Gi"
+                    nvidia.com/gpu: 4
                   requests:
-                    cpu: "500m"
-                    memory: "2Gi"
-    headServiceAnnotations: {}
+                    cpu: "14"
+                    memory: "54Gi"
+            tolerations:
+              - key: node.kubernetes.io/ethos-gpu-accelerator
+                operator: Exists
+              - key: ethos.corp.adobe.com/ethos-gpu-family
+                operator: Equal
+                value: nvidia-a10
+              - key: ethos.corp.adobe.com/ethos-workload
+                operator: Equal
+                value: gpu-optimized
+    #headServiceAnnotations: {}
       # annotations passed on for the Head Service
       # service_key: "service_value"
